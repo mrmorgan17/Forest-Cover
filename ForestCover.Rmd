@@ -2,10 +2,44 @@
 title: "ForestCover"
 author: "Matthew Morgan & David Teuscher"
 date: "6/5/2020"
-output: html_document
+output: pdf_document
 ---
 
 ```{r}
 library(caret)
+library(tidyverse)
+library(DataExplorer)
+library(beepr)
+```
+
+```{r}
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
+```
+
+
+```{r}
+myControl <- trainControl(method = "cv",
+                          number = 10)
+
+tunegrid <- expand.grid(eta = .25,
+                        max_depth = 3,
+                        colsample_bytree = .9,
+                        subsample = .8,
+                        nrounds = 100,
+                        min_child_weight = 1,
+                        gamma = .075)
+xgbTree.model <- train(as.factor(Cover_Type)~.-Id,
+                   data = train,
+                   method = "xgbTree",
+                   tuneGrid= tunegrid,
+                   trControl = myControl,
+                   metric = "Accuracy"
+)
+xgbTree.model
+beep(sound =8)
+preds <- predict(xgbTree.model, test)
+xgbTree <- data.frame(Id = test$Id, Cover_Type = preds)
+write_csv(xgbTree, "xgbTree-preds.csv")
 ```
 
