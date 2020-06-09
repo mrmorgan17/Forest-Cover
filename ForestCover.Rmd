@@ -17,7 +17,6 @@ train <- read.csv("train.csv")
 test <- read.csv("test.csv")
 ```
 
-
 ```{r}
 myControl <- trainControl(method = "cv",
                           number = 10)
@@ -32,31 +31,30 @@ tunegrid <- expand.grid(eta = .25,
 xgbTree.model <- train(as.factor(Cover_Type)~.-Id,
                    data = train,
                    method = "xgbTree",
-                   tuneGrid= tunegrid,
+                   tuneGrid = tunegrid,
                    trControl = myControl,
                    metric = "Accuracy"
 )
 xgbTree.model
-beep(sound =8)
+beep(sound = 8)
 preds <- predict(xgbTree.model, test)
 xgbTree <- data.frame(Id = test$Id, Cover_Type = preds)
 write_csv(xgbTree, "xgbTree-preds.csv")
 ```
 
-
 ```{r}
 
-grid <- expand.grid("n.trees"=500, "interaction.depth"=4, "shrinkage"=0.1, "n.minobsinnode"=20)
+grid <- expand.grid("n.trees" = 500, "interaction.depth" = 4, "shrinkage" = 0.1, "n.minobsinnode" = 20)
 rfb.mod <- train(as.factor(Cover_Type)~.-Id,
-                 data=train,
-                 method="gbm",
-                 tuneGrid=grid,
-                 trControl=myControl,
+                 data = train,
+                 method = "gbm",
+                 tuneGrid = grid,
+                 trControl = myControl,
                  metric = "Accuracy",
-                 verbose=F,
+                 verbose = FALSE,
                  preProcess = c("nzv", "zv", "center", "scale")
                  )
-beep(sound =8)
+beep(sound = 8)
 preds <- predict(rfb.mod, test)
 gbm <- data.frame(Id = test$Id, Cover_Type = preds)
 write_csv(gbm, "gbm-preds.csv")
