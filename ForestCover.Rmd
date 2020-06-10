@@ -60,4 +60,31 @@ gbm <- data.frame(Id = test$Id, Cover_Type = preds)
 write_csv(gbm, "gbm-preds.csv")
 ```
 
+```{r}
+svmLinear.model <- train(as.factor(Cover_Type) ~ . -Id,
+                         data = train,
+                         method = "svmLinear",
+                         tuneLength = 4,
+                         trControl = myControl,
+                         metric = "Accuracy",
+                         #verbose = FALSE,
+                         preProcess = c("zv", "center", "scale")
+                         )
+svmLinear.model
+beep(sound = 2)
+```
+
+```{r}
+model <- train(as.factor(Cover_Type) ~ . -Id,
+                       data = train,
+                       method = "xgbDART",
+                       tuneLength = 4,
+                       trControl = myControl,
+                       metric = "Accuracy"#,
+                       #verbose = FALSE,
+                       #preProcess = c("zv", "center", "scale")
+                       )
+model
+beep(sound = 2)
+```
 
