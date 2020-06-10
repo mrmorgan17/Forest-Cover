@@ -5,7 +5,7 @@ date: "6/5/2020"
 output: pdf_document
 ---
 
-```{r}
+```{r, message = FALSE}
 library(caret)
 library(tidyverse)
 library(DataExplorer)
@@ -74,17 +74,4 @@ svmLinear.model
 beep(sound = 2)
 ```
 
-```{r}
-model <- train(as.factor(Cover_Type) ~ . -Id,
-                       data = train,
-                       method = "xgbDART",
-                       tuneLength = 4,
-                       trControl = myControl,
-                       metric = "Accuracy"#,
-                       #verbose = FALSE,
-                       #preProcess = c("zv", "center", "scale")
-                       )
-model
-beep(sound = 2)
-```
 
