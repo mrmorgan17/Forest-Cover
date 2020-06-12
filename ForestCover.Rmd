@@ -18,7 +18,15 @@ test <- read.csv("test.csv")
 ```
 
 ```{r}
-myControl <- trainControl(method = "cv",
+# Histogram to show how many of each forest cover
+ggplot(train, aes(x = as.factor(Cover_Type))) + geom_bar(fill = "navyblue") + labs(x = "Cover Type", y = "Frequency")
+
+# The number of patches for each type of forest cover is approximately equal for all types of forest cover
+```
+
+
+```{r}
+myControl <- trainControl(method = "repeatedcv",
                           number = 10)
 
 tunegrid <- expand.grid(eta = .25,
@@ -33,7 +41,8 @@ xgbTree.model <- train(as.factor(Cover_Type)~.-Id,
                    method = "xgbTree",
                    tuneGrid = tunegrid,
                    trControl = myControl,
-                   metric = "Accuracy"
+                   metric = "Accuracy",
+                   preProc = c("nzv","zv", "center", "scale")
 )
 xgbTree.model
 beep(sound = 8)
@@ -74,4 +83,24 @@ svmLinear.model
 beep(sound = 2)
 ```
 
+
+```{r}
+
+grid <- expand.grid("mtry" = c(50, 52), splitrule = "extratrees", min.node.size = 1)
+rf.model <- train(as.factor(Cover_Type) ~ . -Id,
+                  data = train, 
+                  method = "ranger",
+                  trControl = myControl,
+                  tuneGrid = grid,
+                  metric = "Accuracy",
+                  preProcess = c("zv", "center", "scale"))
+rf.model
+
+beep(sound = 8)
+
+preds <- predict(rf.model, test)
+rf <- data.frame(Id = test$Id, Cover_Type = preds)
+write_csv(rf, "rf-preds.csv")
+
+```
 
