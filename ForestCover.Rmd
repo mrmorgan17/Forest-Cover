@@ -19,10 +19,65 @@ test <- read.csv("test.csv")
 
 ```{r}
 # Histogram to show how many of each forest cover
-ggplot(train, aes(x = as.factor(Cover_Type))) + geom_bar(fill = "navyblue") + labs(x = "Cover Type", y = "Frequency")
+ggplot(train, aes(x = as.factor(Cover_Type))) + 
+  geom_bar(fill = "navyblue") + 
+  labs(x = "Cover Type", y = "Frequency")
 
 # The number of patches for each type of forest cover is approximately equal for all types of forest cover
 ```
+
+```{r}
+head(train)
+train.eda <- train %>% group_by(Id) %>% pivot_longer(Soil_Type1:Soil_Type40, "SoilType") %>% filter(value == 1) %>% mutate(SoilType = as.numeric(str_extract(SoilType, "[0-9]+"))) %>% select(-value) %>% pivot_longer(Wilderness_Area1:Wilderness_Area4, "WildernessArea") %>% filter(value == 1) %>% mutate(WildernessArea = as.numeric(str_extract(WildernessArea, "[0-9]+"))) %>% select(-value)
+
+soils <- train.eda %>%
+  group_by(SoilType, Cover_Type) %>%
+  summarize(Number = n()) %>% arrange(SoilType)
+
+# Stack bar chart of soil type
+ggplot(soils, aes(x = as.factor(SoilType), y = Number)) + geom_bar(position = "stack", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Soil Type")
+
+# Side by side bar of soil type
+ggplot(soils, aes(x = as.factor(SoilType), y = Number)) + geom_bar(position = "dodge", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Soil Type")
+
+areas <- train.eda %>%
+  group_by(WildernessArea, Cover_Type) %>%
+  summarize(Number = n()) %>%
+  arrange(WildernessArea)
+
+# Stacked bar chart of wilderness area by soil type
+ggplot(areas, aes(x = as.factor(WildernessArea), y = Number)) + geom_bar(position = "dodge", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Wilderness Area")
+
+
+```
+
+```{r}
+ggplot(train, aes(x=as.factor(Cover_Type), y=Elevation)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+
+ggplot(train, aes(x=as.factor(Cover_Type), y=Aspect)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+
+ggplot(train, aes(x=as.factor(Cover_Type), y=Slope)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+str(train)
+
+quant_vars <- train %>% select(Elevation, Aspect, Slope, Horizontal_Distance_To_Hydrology, Vertical_Distance_To_Hydrology, Hillshade_9am, Hillshade_Noon, Hillshade_3pm, Horizontal_Distance_To_Fire_Points, Horizontal_Distance_To_Roadways)
+
+library(corrplot)
+names(quant_vars) <- c("Elevation", "Aspect", "Slope", "H-Hydrology", "V-Hydrology", 
+                       "Hill-9", "Hill-Noon", "Hill-3", "H-Fire", "H-Road")
+
+corrplot(cor(quant_vars), method = "color", type = "upper", diag = FALSE, addCoef.col = "black", number.digits = 2)
+
+```
+
 
 
 ```{r}
