@@ -108,8 +108,10 @@ write_csv(xgbTree, "xgbTree-preds.csv")
 
 ```{r}
 
-grid <- expand.grid("n.trees" = 500, "interaction.depth" = 4, "shrinkage" = 0.1, "n.minobsinnode" = 20)
-rfb.mod <- train(as.factor(Cover_Type)~.-Id,
+grid <- expand.grid("n.trees" = c(100, 200, 500, 1000), "interaction.depth" = 4, "shrinkage" = 0.1, "n.minobsinnode" = 20)
+# n.trees should be 1000
+# Currently it is 70%
+gbm.mod <- train(as.factor(Cover_Type)~.-Id,
                  data = train,
                  method = "gbm",
                  tuneGrid = grid,
@@ -119,9 +121,9 @@ rfb.mod <- train(as.factor(Cover_Type)~.-Id,
                  preProcess = c("nzv", "zv", "center", "scale")
                  )
 beep(sound = 8)
-preds <- predict(rfb.mod, test)
+preds <- predict(gbm.mod, test)
 gbm <- data.frame(Id = test$Id, Cover_Type = preds)
-write_csv(gbm, "gbm-preds.csv")
+write_csv(gbm, "gbm-preds-2.csv")
 ```
 
 ```{r}
@@ -140,7 +142,7 @@ beep(sound = 2)
 
 
 ```{r}
-
+# This random forest is the best model so far
 grid <- expand.grid("mtry" = c(50, 52), splitrule = "extratrees", min.node.size = 1)
 rf.model <- train(as.factor(Cover_Type) ~ . -Id,
                   data = train, 
@@ -157,5 +159,25 @@ preds <- predict(rf.model, test)
 rf <- data.frame(Id = test$Id, Cover_Type = preds)
 write_csv(rf, "rf-preds.csv")
 
+```
+
+```{r}
+
+# This is the grid that was used to find the best
+#grid <- expand.grid("mtry" = c(20, 30, 40, 50), "coefReg" = c(.2,.5, .8, 1)) # Best comes from mtry = 50 and coefReg = .8
+grid <- expand.grid("mtry" = 50, "coefReg" = .8)
+reg.rf <- rf.model <- train(as.factor(Cover_Type) ~ . -Id,
+                  data = train, 
+                  method = "RRFglobal",
+                  trControl = myControl,
+                  tuneGrid = grid,
+                  metric = "Accuracy",
+                  preProcess = c("zv", "center", "scale"))
+reg.rf
+beep(sound = 8)
+
+preds <- predict(reg.rf, test)
+rf <- data.frame(Id = test$Id, Cover_Type = preds)
+write_csv(rf, "reg-rf-preds-2.csv")
 ```
 
