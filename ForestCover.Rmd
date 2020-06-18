@@ -140,6 +140,28 @@ svmLinear.model
 beep(sound = 2)
 ```
 
+```{r}
+# score of 0.62083
+myControl <- trainControl(method = "repeatedcv",
+                          number = 3)
+
+grid <- data.frame("C"=seq(0,100,20))
+
+svmRadial.model <- train(as.factor(Cover_Type) ~ . -Id,
+                         data=train,
+                         method="svmRadial",
+                         tunegrid = grid,
+                         trControl=myControl,
+                         metric="Accuracy",
+                         preProcess = c("zv", "center", "scale"))
+
+beep(sound=5)
+
+preds <- predict(svmRadial.model, test)
+beep(sound=5)
+svmR <- data.frame(Id = test$Id, Cover_Type = preds)
+write_csv(svmR, "svmRadial-preds.csv")
+```
 
 ```{r}
 # This random forest is the best model so far
