@@ -18,7 +18,70 @@ test <- read.csv("test.csv")
 ```
 
 ```{r}
-myControl <- trainControl(method = "cv",
+# Histogram to show how many of each forest cover
+ggplot(train, aes(x = as.factor(Cover_Type))) + 
+  geom_bar(fill = "navyblue") + 
+  labs(x = "Cover Type", y = "Frequency")
+
+# The number of patches for each type of forest cover is approximately equal for all types of forest cover
+```
+
+```{r}
+head(train)
+train.eda <- train %>% group_by(Id) %>% pivot_longer(Soil_Type1:Soil_Type40, "SoilType") %>% filter(value == 1) %>% mutate(SoilType = as.numeric(str_extract(SoilType, "[0-9]+"))) %>% select(-value) %>% pivot_longer(Wilderness_Area1:Wilderness_Area4, "WildernessArea") %>% filter(value == 1) %>% mutate(WildernessArea = as.numeric(str_extract(WildernessArea, "[0-9]+"))) %>% select(-value)
+
+soils <- train.eda %>%
+  group_by(SoilType, Cover_Type) %>%
+  summarize(Number = n()) %>% arrange(SoilType)
+
+# Stack bar chart of soil type
+ggplot(soils, aes(x = as.factor(SoilType), y = Number)) + geom_bar(position = "stack", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Soil Type")
+
+# Side by side bar of soil type
+ggplot(soils, aes(x = as.factor(SoilType), y = Number)) + geom_bar(position = "dodge", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Soil Type")
+
+areas <- train.eda %>%
+  group_by(WildernessArea, Cover_Type) %>%
+  summarize(Number = n()) %>%
+  arrange(WildernessArea)
+
+# Stacked bar chart of wilderness area by soil type
+ggplot(areas, aes(x = as.factor(WildernessArea), y = Number)) + geom_bar(position = "dodge", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Wilderness Area")
+
+
+```
+
+```{r}
+ggplot(train, aes(x=as.factor(Cover_Type), y=Elevation)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+
+ggplot(train, aes(x=as.factor(Cover_Type), y=Aspect)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+
+ggplot(train, aes(x=as.factor(Cover_Type), y=Slope)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+str(train)
+
+quant_vars <- train %>% select(Elevation, Aspect, Slope, Horizontal_Distance_To_Hydrology, Vertical_Distance_To_Hydrology, Hillshade_9am, Hillshade_Noon, Hillshade_3pm, Horizontal_Distance_To_Fire_Points, Horizontal_Distance_To_Roadways)
+
+library(corrplot)
+names(quant_vars) <- c("Elevation", "Aspect", "Slope", "H-Hydrology", "V-Hydrology", 
+                       "Hill-9", "Hill-Noon", "Hill-3", "H-Fire", "H-Road")
+
+corrplot(cor(quant_vars), method = "color", type = "upper", diag = FALSE, addCoef.col = "black", number.digits = 2)
+
+```
+
+
+
+```{r}
+myControl <- trainControl(method = "repeatedcv",
                           number = 10)
 
 tunegrid <- expand.grid(eta = .25,
@@ -33,7 +96,8 @@ xgbTree.model <- train(as.factor(Cover_Type)~.-Id,
                    method = "xgbTree",
                    tuneGrid = tunegrid,
                    trControl = myControl,
-                   metric = "Accuracy"
+                   metric = "Accuracy",
+                   preProc = c("nzv","zv", "center", "scale")
 )
 xgbTree.model
 beep(sound = 8)
@@ -44,8 +108,10 @@ write_csv(xgbTree, "xgbTree-preds.csv")
 
 ```{r}
 
-grid <- expand.grid("n.trees" = 500, "interaction.depth" = 4, "shrinkage" = 0.1, "n.minobsinnode" = 20)
-rfb.mod <- train(as.factor(Cover_Type)~.-Id,
+grid <- expand.grid("n.trees" = c(100, 200, 500, 1000), "interaction.depth" = 4, "shrinkage" = 0.1, "n.minobsinnode" = 20)
+# n.trees should be 1000
+# Currently it is 70%
+gbm.mod <- train(as.factor(Cover_Type)~.-Id,
                  data = train,
                  method = "gbm",
                  tuneGrid = grid,
@@ -55,9 +121,9 @@ rfb.mod <- train(as.factor(Cover_Type)~.-Id,
                  preProcess = c("nzv", "zv", "center", "scale")
                  )
 beep(sound = 8)
-preds <- predict(rfb.mod, test)
+preds <- predict(gbm.mod, test)
 gbm <- data.frame(Id = test$Id, Cover_Type = preds)
-write_csv(gbm, "gbm-preds.csv")
+write_csv(gbm, "gbm-preds-2.csv")
 ```
 
 ```{r}
@@ -74,4 +140,44 @@ svmLinear.model
 beep(sound = 2)
 ```
 
+
+```{r}
+# This random forest is the best model so far
+grid <- expand.grid("mtry" = c(50, 52), splitrule = "extratrees", min.node.size = 1)
+rf.model <- train(as.factor(Cover_Type) ~ . -Id,
+                  data = train, 
+                  method = "ranger",
+                  trControl = myControl,
+                  tuneGrid = grid,
+                  metric = "Accuracy",
+                  preProcess = c("zv", "center", "scale"))
+rf.model
+
+beep(sound = 8)
+
+preds <- predict(rf.model, test)
+rf <- data.frame(Id = test$Id, Cover_Type = preds)
+write_csv(rf, "rf-preds.csv")
+
+```
+
+```{r}
+
+# This is the grid that was used to find the best
+#grid <- expand.grid("mtry" = c(20, 30, 40, 50), "coefReg" = c(.2,.5, .8, 1)) # Best comes from mtry = 50 and coefReg = .8
+grid <- expand.grid("mtry" = 50, "coefReg" = .8)
+reg.rf <- rf.model <- train(as.factor(Cover_Type) ~ . -Id,
+                  data = train, 
+                  method = "RRFglobal",
+                  trControl = myControl,
+                  tuneGrid = grid,
+                  metric = "Accuracy",
+                  preProcess = c("zv", "center", "scale"))
+reg.rf
+beep(sound = 8)
+
+preds <- predict(reg.rf, test)
+rf <- data.frame(Id = test$Id, Cover_Type = preds)
+write_csv(rf, "reg-rf-preds-2.csv")
+```
 
