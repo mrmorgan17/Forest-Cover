@@ -27,7 +27,6 @@ ggplot(train, aes(x = as.factor(Cover_Type))) +
 ```
 
 ```{r}
-head(train)
 train.eda <- train %>% group_by(Id) %>% pivot_longer(Soil_Type1:Soil_Type40, "SoilType") %>% filter(value == 1) %>% mutate(SoilType = as.numeric(str_extract(SoilType, "[0-9]+"))) %>% select(-value) %>% pivot_longer(Wilderness_Area1:Wilderness_Area4, "WildernessArea") %>% filter(value == 1) %>% mutate(WildernessArea = as.numeric(str_extract(WildernessArea, "[0-9]+"))) %>% select(-value)
 
 soils <- train.eda %>%
@@ -108,7 +107,7 @@ write_csv(xgbTree, "xgbTree-preds.csv")
 
 ```{r}
 
-grid <- expand.grid("n.trees" = c(100, 200, 500, 1000), "interaction.depth" = 4, "shrinkage" = 0.1, "n.minobsinnode" = 20)
+grid <- expand.grid("n.trees" = 1000, "interaction.depth" = 4, "shrinkage" = 0.1, "n.minobsinnode" = 20)
 # n.trees should be 1000
 # Currently it is 70%
 gbm.mod <- train(as.factor(Cover_Type)~.-Id,
@@ -121,8 +120,8 @@ gbm.mod <- train(as.factor(Cover_Type)~.-Id,
                  preProcess = c("nzv", "zv", "center", "scale")
                  )
 beep(sound = 8)
-preds <- predict(gbm.mod, test)
-gbm <- data.frame(Id = test$Id, Cover_Type = preds)
+gbm.preds <- predict(gbm.mod, test)
+gbm <- data.frame(Id = test$Id, Cover_Type = gbm.preds)
 write_csv(gbm, "gbm-preds-2.csv")
 ```
 
@@ -177,8 +176,8 @@ rf.model
 
 beep(sound = 8)
 
-preds <- predict(rf.model, test)
-rf <- data.frame(Id = test$Id, Cover_Type = preds)
+rf.preds <- predict(rf.model, test)
+rf <- data.frame(Id = test$Id, Cover_Type = rf.preds)
 write_csv(rf, "rf-preds.csv")
 
 ```
@@ -198,8 +197,79 @@ reg.rf <- rf.model <- train(as.factor(Cover_Type) ~ . -Id,
 reg.rf
 beep(sound = 8)
 
-preds <- predict(reg.rf, test)
-rf <- data.frame(Id = test$Id, Cover_Type = preds)
+reg.preds <- predict(reg.rf, test)
+reg.rf <- data.frame(Id = test$Id, Cover_Type = reg.preds)
 write_csv(rf, "reg-rf-preds-2.csv")
+```
+
+
+```{r}
+
+# Join the predictions together to a single data frame
+all.preds <- gbm %>% left_join(rf, by = "Id") %>% left_join(reg.rf, by = "Id")
+
+# Set the seed so the random stays the same
+set.seed(4171996)
+
+# Pull the observations where at least two agree
+all.preds.attempt <- all.preds %>% filter(Cover_Type.x == Cover_Type.y | Cover_Type.y == Cover_Type | Cover_Type == Cover_Type.x)
+
+# Function to calculate the mode
+getmode <- function(x) {
+   uniqv <- unique(x)
+   uniqv[which.max(tabulate(match(x, uniqv)))]
+}
+
+# Determine which class is the most common and should be the vote for each row
+all.preds.attempt$Vote <- apply(all.preds.attempt[,-1], 1, getmode)
+
+# For some reason the data frame gets grouped, so I ungroup it
+all.preds.attempt <- all.preds.attempt %>% ungroup()
+
+# Select all the rows where all three models differ
+another.test <- all.preds[!(all.preds$Id %in% all.preds.attempt$Id),]
+#Randomly select which model will be used
+another.test$random <- sample(1:3, nrow(another.test), replace = TRUE)
+
+# Choose vote based off of the model used and then drop the variable that specifies the value to use
+another.test2 <- another.test %>% group_by(Id) %>%
+  mutate(Vote = ifelse(random == 1, as.character(Cover_Type.x), ifelse(random == 2, as.character(Cover_Type.y), as.character(Cover_Type)))) %>%
+  ungroup() %>%
+  select(-random)
+
+# Put back together and arrange by ID
+all.preds.together <- all.preds.attempt %>% bind_rows(another.test2) %>% arrange(Id)
+all.preds.together <- all.preds.together %>% select(Id, Vote) %>%
+  rename(Cover_Type = Vote)
+
+write_csv(all.preds.together, "voting-forest.csv")
+
+```
+
+```{r}
+
+# This is the same as above, but I tried have the better random forest be chosen when two or more didn't agree
+
+all.preds <- gbm %>% left_join(rf, by = "Id") %>% left_join(reg.rf, by = "Id")
+all.preds.attempt <- all.preds %>% filter(Cover_Type.x == Cover_Type.y | Cover_Type.y == Cover_Type | Cover_Type == Cover_Type.x)
+
+# Calculate most common and ungroup 
+all.preds.attempt$Vote <- apply(all.preds.attempt[,-1], 1, getmode)
+
+all.preds.attempt <- all.preds.attempt %>% ungroup()
+
+# Take rows where all 3 are different and change them to the prediction from the best random forest
+another.test <- all.preds[!(all.preds$Id %in% all.preds.attempt$Id),]
+another.test2 <- another.test %>% group_by(Id) %>%
+  mutate(Vote = Cover_Type.y) %>%
+  ungroup()
+
+# Combine back together and create output file
+all.preds.together <- all.preds.attempt %>% bind_rows(another.test2) %>% arrange(Id)
+
+all.preds.together <- all.preds.together %>% select(Id, Vote) %>%
+  rename(Cover_Type = Vote)
+
+write_csv(all.preds.together, "voting-forest2.csv")
 ```
 
