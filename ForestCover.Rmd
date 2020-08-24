@@ -5,7 +5,272 @@ date: "6/5/2020"
 output: html_document
 ---
 
-```{r}
+```{r, message = FALSE}
 library(caret)
+library(tidyverse)
+library(DataExplorer)
+library(beepr)
 ```
 
+```{r}
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
+```
+
+```{r}
+# Histogram to show how many of each forest cover
+ggplot(train, aes(x = as.factor(Cover_Type))) + 
+  geom_bar(fill = "navyblue") + 
+  labs(x = "Cover Type", y = "Frequency")
+
+# The number of patches for each type of forest cover is approximately equal for all types of forest cover
+```
+
+```{r}
+train.eda <- train %>% group_by(Id) %>% pivot_longer(Soil_Type1:Soil_Type40, "SoilType") %>% filter(value == 1) %>% mutate(SoilType = as.numeric(str_extract(SoilType, "[0-9]+"))) %>% select(-value) %>% pivot_longer(Wilderness_Area1:Wilderness_Area4, "WildernessArea") %>% filter(value == 1) %>% mutate(WildernessArea = as.numeric(str_extract(WildernessArea, "[0-9]+"))) %>% select(-value)
+
+soils <- train.eda %>%
+  group_by(SoilType, Cover_Type) %>%
+  summarize(Number = n()) %>% arrange(SoilType)
+
+# Stack bar chart of soil type
+ggplot(soils, aes(x = as.factor(SoilType), y = Number)) + geom_bar(position = "stack", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Soil Type")
+
+# Side by side bar of soil type
+ggplot(soils, aes(x = as.factor(SoilType), y = Number)) + geom_bar(position = "dodge", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Soil Type")
+
+areas <- train.eda %>%
+  group_by(WildernessArea, Cover_Type) %>%
+  summarize(Number = n()) %>%
+  arrange(WildernessArea)
+
+# Stacked bar chart of wilderness area by soil type
+ggplot(areas, aes(x = as.factor(WildernessArea), y = Number)) + geom_bar(position = "dodge", aes(fill = as.factor(Cover_Type)), stat = "identity") + theme(legend.title = element_blank(), axis.title.y = element_blank()) + labs(x= "Wilderness Area")
+
+
+```
+
+```{r}
+ggplot(train, aes(x=as.factor(Cover_Type), y=Elevation)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+
+ggplot(train, aes(x=as.factor(Cover_Type), y=Aspect)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+
+ggplot(train, aes(x=as.factor(Cover_Type), y=Slope)) + 
+  geom_jitter(alpha = .05, color = "steelblue") +
+  geom_boxplot(alpha = .5) +
+  labs(x = "Cover Type")
+str(train)
+
+quant_vars <- train %>% select(Elevation, Aspect, Slope, Horizontal_Distance_To_Hydrology, Vertical_Distance_To_Hydrology, Hillshade_9am, Hillshade_Noon, Hillshade_3pm, Horizontal_Distance_To_Fire_Points, Horizontal_Distance_To_Roadways)
+
+library(corrplot)
+names(quant_vars) <- c("Elevation", "Aspect", "Slope", "H-Hydrology", "V-Hydrology", 
+                       "Hill-9", "Hill-Noon", "Hill-3", "H-Fire", "H-Road")
+
+corrplot(cor(quant_vars), method = "color", type = "upper", diag = FALSE, addCoef.col = "black", number.digits = 2)
+
+```
+
+
+
+```{r}
+myControl <- trainControl(method = "repeatedcv",
+                          number = 10)
+
+tunegrid <- expand.grid(eta = .25,
+                        max_depth = 3,
+                        colsample_bytree = .9,
+                        subsample = .8,
+                        nrounds = 100,
+                        min_child_weight = 1,
+                        gamma = .075)
+xgbTree.model <- train(as.factor(Cover_Type)~.-Id,
+                   data = train,
+                   method = "xgbTree",
+                   tuneGrid = tunegrid,
+                   trControl = myControl,
+                   metric = "Accuracy",
+                   preProc = c("nzv","zv", "center", "scale")
+)
+xgbTree.model
+beep(sound = 8)
+preds <- predict(xgbTree.model, test)
+xgbTree <- data.frame(Id = test$Id, Cover_Type = preds)
+write_csv(xgbTree, "xgbTree-preds.csv")
+```
+
+```{r}
+
+grid <- expand.grid("n.trees" = 1000, "interaction.depth" = 4, "shrinkage" = 0.1, "n.minobsinnode" = 20)
+# n.trees should be 1000
+# Currently it is 70%
+gbm.mod <- train(as.factor(Cover_Type)~.-Id,
+                 data = train,
+                 method = "gbm",
+                 tuneGrid = grid,
+                 trControl = myControl,
+                 metric = "Accuracy",
+                 verbose = FALSE,
+                 preProcess = c("nzv", "zv", "center", "scale")
+                 )
+beep(sound = 8)
+gbm.preds <- predict(gbm.mod, test)
+gbm <- data.frame(Id = test$Id, Cover_Type = gbm.preds)
+write_csv(gbm, "gbm-preds-2.csv")
+```
+
+```{r}
+svmLinear.model <- train(as.factor(Cover_Type) ~ . -Id,
+                         data = train,
+                         method = "svmLinear",
+                         tuneLength = 4,
+                         trControl = myControl,
+                         metric = "Accuracy",
+                         #verbose = FALSE,
+                         preProcess = c("zv", "center", "scale")
+                         )
+svmLinear.model
+beep(sound = 2)
+```
+
+```{r}
+# score of 0.62083
+myControl <- trainControl(method = "repeatedcv",
+                          number = 3)
+
+grid <- data.frame("C"=seq(0,100,20))
+
+svmRadial.model <- train(as.factor(Cover_Type) ~ . -Id,
+                         data=train,
+                         method="svmRadial",
+                         tunegrid = grid,
+                         trControl=myControl,
+                         metric="Accuracy",
+                         preProcess = c("zv", "center", "scale"))
+
+beep(sound=5)
+
+preds <- predict(svmRadial.model, test)
+beep(sound=5)
+svmR <- data.frame(Id = test$Id, Cover_Type = preds)
+write_csv(svmR, "svmRadial-preds.csv")
+```
+
+```{r}
+# This random forest is the best model so far
+grid <- expand.grid("mtry" = c(50, 52), splitrule = "extratrees", min.node.size = 1)
+rf.model <- train(as.factor(Cover_Type) ~ . -Id,
+                  data = train, 
+                  method = "ranger",
+                  trControl = myControl,
+                  tuneGrid = grid,
+                  metric = "Accuracy",
+                  preProcess = c("zv", "center", "scale"))
+rf.model
+
+beep(sound = 8)
+
+rf.preds <- predict(rf.model, test)
+rf <- data.frame(Id = test$Id, Cover_Type = rf.preds)
+write_csv(rf, "rf-preds.csv")
+
+```
+
+```{r}
+
+# This is the grid that was used to find the best
+#grid <- expand.grid("mtry" = c(20, 30, 40, 50), "coefReg" = c(.2,.5, .8, 1)) # Best comes from mtry = 50 and coefReg = .8
+grid <- expand.grid("mtry" = 50, "coefReg" = .8)
+reg.rf <- rf.model <- train(as.factor(Cover_Type) ~ . -Id,
+                  data = train, 
+                  method = "RRFglobal",
+                  trControl = myControl,
+                  tuneGrid = grid,
+                  metric = "Accuracy",
+                  preProcess = c("zv", "center", "scale"))
+reg.rf
+beep(sound = 8)
+
+reg.preds <- predict(reg.rf, test)
+reg.rf <- data.frame(Id = test$Id, Cover_Type = reg.preds)
+write_csv(rf, "reg-rf-preds-2.csv")
+```
+
+
+```{r}
+
+# Join the predictions together to a single data frame
+all.preds <- gbm %>% left_join(rf, by = "Id") %>% left_join(reg.rf, by = "Id")
+
+# Set the seed so the random stays the same
+set.seed(4171996)
+
+# Pull the observations where at least two agree
+all.preds.attempt <- all.preds %>% filter(Cover_Type.x == Cover_Type.y | Cover_Type.y == Cover_Type | Cover_Type == Cover_Type.x)
+
+# Function to calculate the mode
+getmode <- function(x) {
+   uniqv <- unique(x)
+   uniqv[which.max(tabulate(match(x, uniqv)))]
+}
+
+# Determine which class is the most common and should be the vote for each row
+all.preds.attempt$Vote <- apply(all.preds.attempt[,-1], 1, getmode)
+
+# For some reason the data frame gets grouped, so I ungroup it
+all.preds.attempt <- all.preds.attempt %>% ungroup()
+
+# Select all the rows where all three models differ
+another.test <- all.preds[!(all.preds$Id %in% all.preds.attempt$Id),]
+#Randomly select which model will be used
+another.test$random <- sample(1:3, nrow(another.test), replace = TRUE)
+
+# Choose vote based off of the model used and then drop the variable that specifies the value to use
+another.test2 <- another.test %>% group_by(Id) %>%
+  mutate(Vote = ifelse(random == 1, as.character(Cover_Type.x), ifelse(random == 2, as.character(Cover_Type.y), as.character(Cover_Type)))) %>%
+  ungroup() %>%
+  select(-random)
+
+# Put back together and arrange by ID
+all.preds.together <- all.preds.attempt %>% bind_rows(another.test2) %>% arrange(Id)
+all.preds.together <- all.preds.together %>% select(Id, Vote) %>%
+  rename(Cover_Type = Vote)
+
+write_csv(all.preds.together, "voting-forest.csv")
+
+```
+
+```{r}
+
+# This is the same as above, but I tried have the better random forest be chosen when two or more didn't agree
+
+all.preds <- gbm %>% left_join(rf, by = "Id") %>% left_join(reg.rf, by = "Id")
+all.preds.attempt <- all.preds %>% filter(Cover_Type.x == Cover_Type.y | Cover_Type.y == Cover_Type | Cover_Type == Cover_Type.x)
+
+# Calculate most common and ungroup 
+all.preds.attempt$Vote <- apply(all.preds.attempt[,-1], 1, getmode)
+
+all.preds.attempt <- all.preds.attempt %>% ungroup()
+
+# Take rows where all 3 are different and change them to the prediction from the best random forest
+another.test <- all.preds[!(all.preds$Id %in% all.preds.attempt$Id),]
+another.test2 <- another.test %>% group_by(Id) %>%
+  mutate(Vote = Cover_Type.y) %>%
+  ungroup()
+
+# Combine back together and create output file
+all.preds.together <- all.preds.attempt %>% bind_rows(another.test2) %>% arrange(Id)
+
+all.preds.together <- all.preds.together %>% select(Id, Vote) %>%
+  rename(Cover_Type = Vote)
+
+write_csv(all.preds.together, "voting-forest2.csv")
+```
+
+>>>>>>> c0ace5f8a9e169a49b3117998d69cce71ee5f2e2
